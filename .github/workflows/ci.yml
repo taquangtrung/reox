@@ -1,0 +1,41 @@
+# Lints, tests, and documentation, and optionally a fuzzing run: started by
+# hand from the Actions tab, never on push or pull request.
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      fuzz_seconds:
+        description: "Seconds to fuzz reox against Oniguruma; 0 to skip fuzzing"
+        type: number
+        required: false
+        default: 0
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rustup installs the toolchain `rust-toolchain.toml` pins.
+      - run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - run: make lint
+      - run: make test
+      - run: make doc
+
+  fuzz:
+    if: inputs.fuzz_seconds > 0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --locked
+      # Through the environment, so the input never becomes shell text.
+      - run: make fuzz FUZZ_SECONDS="$FUZZ_SECONDS"
+        env:
+          FUZZ_SECONDS: ${{ inputs.fuzz_seconds }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts

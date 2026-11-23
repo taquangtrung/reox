@@ -1,0 +1,38 @@
+[package]
+name = "reox"
+description = "Regex, oxidized. A pure-Rust regex engine with lookaround and back-references that never hangs, in Oniguruma's syntax."
+version.workspace = true
+edition.workspace = true
+readme = "README.md"
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+keywords = ["regex", "oniguruma", "textmate", "backtracking", "lookaround"]
+categories = ["text-processing"]
+include = [
+    "/Cargo.toml",
+    "/LICENSE-APACHE",
+    "/LICENSE-MIT",
+    "/README.md",
+    "/src/**/*.rs",
+    "/tests/**",
+]
+
+[lints]
+workspace = true
+
+[dependencies]
+memchr.workspace = true
+regex-automata.workspace = true
+regex-syntax.workspace = true
+thiserror.workspace = true
+
+[features]
+# Test hooks, such as running every search on automata: off for users,
+# on for this crate's own tests through the dev-dependency below.
+testing = []
+
+[dev-dependencies]
+reox = { path = ".", features = ["testing"] }
+onig.workspace = true

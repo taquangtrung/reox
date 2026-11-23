@@ -1,0 +1,19 @@
+[package]
+name = "reox-bench"
+description = "Benchmarks reox against fancy-regex and Oniguruma on TextMate grammar patterns."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+fancy-regex.workspace = true
+reox = { path = "../reox" }
+onig.workspace = true
+serde_json.workspace = true

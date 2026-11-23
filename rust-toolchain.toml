@@ -1,0 +1,5 @@
+# Pinned to the toolchain the sibling repos build with, so code moves between
+# them without surprises. Bump deliberately, rerunning `make lint` after.
+[toolchain]
+channel = "1.100.0"
+components = ["rustfmt", "clippy"]

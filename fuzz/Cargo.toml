@@ -1,0 +1,26 @@
+# Fuzzes reox against Oniguruma: random patterns from a small grammar,
+# searched in random texts from every position, each group compared. A
+# workspace of its own, built on nightly by `cargo fuzz`.
+[package]
+name = "reox-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+arbitrary = "1"
+reox = { path = "../crates/reox" }
+libfuzzer-sys = "0.4"
+onig = "6"
+
+[[bin]]
+name = "differential"
+path = "fuzz_targets/differential.rs"
+test = false
+doc = false
+bench = false
