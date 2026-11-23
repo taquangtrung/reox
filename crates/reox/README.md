@@ -8,7 +8,7 @@ Regex, oxidized. reox (say "ree-ox") is its own regex engine in pure Rust, with 
 
 ```toml
 [dependencies]
-reox = "0.0.1"
+reox = "0.0.2"
 ```
 
 ```rust
@@ -23,12 +23,12 @@ assert_eq!(captures.name("name").unwrap().as_str(), "call");
 
 Early. Supported:
 
-- Oniguruma's syntax: line anchors, `\A`, `\z`, `\Z`, `\G`, Unicode POSIX classes and properties, `(?imx)` flags, lookahead and lookbehind (unbounded too), atomic groups, possessive quantifiers, back-references, named groups, subroutine calls (`\g<name>`, recursive too), `\K`, `\R`, and `\X`.
+- Oniguruma's syntax: line anchors, `\A`, `\z`, `\Z`, `\G`, Unicode POSIX classes and properties, `(?imx)` flags, lookahead and lookbehind (unbounded too), atomic groups, possessive quantifiers, back-references, named groups, subroutine calls (`\g<name>`, recursive too), conditional groups (`(?(cond)yes|no)`), the absent repeater (`(?~absent)`), `\K`, `\R`, and `\X`.
 - Case folding to several characters, both ways: `ß` matches `ss` and `ss` matches `ß`.
 - Searching from a position, with `\G` anchored there, allocating nothing once warm.
 - `RegexSet`: several patterns searched as one, returning the leftmost match, ties going to the first pattern, as a TextMate tokenizer needs.
 
-Not yet: absent operators (`(?~...)`), conditionals, text segment boundaries (`\y`, `\Y`), and back-references to a recursion level (`\k<name+1>`).
+Not yet: absent expressions (`(?~|...|...)`), lookaround conditions in conditionals, text segment boundaries (`\y`, `\Y`), and back-references to a recursion level (`\k<name+1>`).
 
 ## License
 

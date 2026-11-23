@@ -90,6 +90,8 @@ pub(crate) enum Inst {
     CharLoop(Box<CharLoop>),
     /// Matches one character of a class.
     Class(Arc<CharClass>),
+    /// Branches on whether any of the condition groups has captured.
+    CondJump(CondJump),
     /// Ends the part an [`Inst::Atomic`] or [`Inst::Look`] runs.
     End,
     /// Goes on at the instruction given.
@@ -112,6 +114,17 @@ pub(crate) enum Inst {
     SaveGroup(GroupEnd),
     /// Tries one instruction, and the other if that fails.
     Split(Split),
+}
+
+/// A conditional jump on capture state.
+#[derive(Debug)]
+pub(crate) struct CondJump {
+    /// The groups whose capture state decides the branch.
+    pub(crate) groups: Box<[usize]>,
+    /// Target instruction when none of `groups` has captured.
+    pub(crate) no: usize,
+    /// Target instruction when any of `groups` has captured.
+    pub(crate) yes: usize,
 }
 
 /// An alternation of several alternatives.

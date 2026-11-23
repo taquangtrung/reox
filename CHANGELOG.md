@@ -4,6 +4,12 @@ Notable changes to reox, newest first. The format follows [Keep a Changelog](htt
 
 ## Unreleased
 
+## 0.0.2
+
+### Added
+
+- Support for the absent repeater (`(?~absent)`) and conditional groups (`(?(cond)yes|no)` with numbered or named group conditions).
+
 ## 0.0.1
 
 First release.

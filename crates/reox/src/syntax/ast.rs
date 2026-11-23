@@ -32,6 +32,8 @@ pub(crate) enum Node {
     Class(ClassUnicode),
     /// Parts matched one after another.
     Concat(Vec<Node>),
+    /// A conditional group (`(?(condition)yes|no)`).
+    Conditional(Conditional),
     /// Nothing.
     Empty,
     /// Where the match is reported to start, moved here (`\K`).
@@ -87,6 +89,17 @@ pub(crate) struct Capture {
     pub(crate) node: Box<Node>,
 }
 
+/// A conditional group.
+#[derive(Clone, Debug)]
+pub(crate) struct Conditional {
+    /// The groups whose capture state decides the branch.
+    pub(crate) groups: Box<[usize]>,
+    /// Matched when none of `groups` has captured.
+    pub(crate) no: Box<Node>,
+    /// Matched when any of `groups` has captured.
+    pub(crate) yes: Box<Node>,
+}
+
 /// A lookaround.
 #[derive(Clone, Debug)]
 pub(crate) struct Look {
@@ -133,6 +146,7 @@ impl Node {
             Self::Call(group) => groups.get(*group).copied().unwrap_or(0),
             Self::Capture(capture) => min_len(&capture.node),
             Self::Concat(parts) => parts.iter().map(min_len).fold(0, usize::saturating_add),
+            Self::Conditional(cond) => min_len(&cond.yes).min(min_len(&cond.no)),
             Self::Repeat(repeat) => min_len(&repeat.node).saturating_mul(repeat.min as usize),
         }
     }
@@ -155,6 +169,7 @@ impl Node {
             Self::Concat(parts) => parts
                 .iter()
                 .try_fold(0usize, |total, part| total.checked_add(max_len(part)?)),
+            Self::Conditional(cond) => Some(max_len(&cond.yes)?.max(max_len(&cond.no)?)),
             Self::Repeat(repeat) => {
                 let inner = max_len(&repeat.node)?;
                 match repeat.max {

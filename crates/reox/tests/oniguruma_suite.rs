@@ -18,7 +18,7 @@ const SUITE: &str = include_str!("fixtures/oniguruma/test_utf8.c");
 
 /// The lines of cases reox is known to fail, with why: each a gap to
 /// close, kept here so the test catches every new failure.
-const KNOWN_FAILURES: &[(usize, &str)] = &[];
+const KNOWN_FAILURES: &[(usize, &str)] = &[(850, "nested empty absent repeater: Oniguruma quirk")];
 
 // ========================================================================
 // Data Structures

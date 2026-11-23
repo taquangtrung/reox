@@ -9,8 +9,8 @@ use crate::error::Error;
 use crate::syntax::{Assertion, Calls, Capture, Look, Node, Parsed, Repeat};
 
 use super::program::{
-    AltInst, AltTarget, Anchor, CharClass, CharLoop, CharMatcher, GroupEnd, Inst, LookInst,
-    Program, Progress, Split,
+    AltInst, AltTarget, Anchor, CharClass, CharLoop, CharMatcher, CondJump, GroupEnd, Inst,
+    LookInst, Program, Progress, Split,
 };
 
 // ========================================================================
@@ -167,6 +167,25 @@ impl Compiler<'_> {
                     }
                 }
             }
+            Node::Conditional(cond) => {
+                let branch = self.emit(Inst::CondJump(CondJump {
+                    groups: cond.groups.clone(),
+                    no: 0,
+                    yes: 0,
+                }))?;
+                let yes = self.next();
+                self.compile(&cond.yes)?;
+                let end_yes = self.emit(Inst::Jump(0))?;
+                let no = self.next();
+                self.compile(&cond.no)?;
+                let end = self.next();
+                self.insts[branch] = Inst::CondJump(CondJump {
+                    groups: cond.groups.clone(),
+                    no,
+                    yes,
+                });
+                self.insts[end_yes] = Inst::Jump(end);
+            }
             Node::Empty => {}
             Node::Keep => {
                 self.emit(Inst::Keep)?;
@@ -217,6 +236,10 @@ impl Compiler<'_> {
 
     /// Appends alternatives, each tried when those before it fail.
     fn compile_alt(&mut self, alternatives: &[Node]) -> Result<(), Error> {
+        if alternatives.is_empty() {
+            self.emit(Inst::Class(CharClass::shared(&ClassUnicode::empty())))?;
+            return Ok(());
+        }
         if alternatives.len() >= ALT_DISPATCH_MIN {
             return self.compile_dispatch(alternatives);
         }
@@ -348,6 +371,7 @@ impl Compiler<'_> {
             | Node::Char(_)
             | Node::Class(_)
             | Node::Concat(_)
+            | Node::Conditional(_)
             | Node::Empty
             | Node::Keep
             | Node::Look(_) => Ok(false),
@@ -490,6 +514,13 @@ fn count_back_references(node: &Node, counts: &mut [usize]) {
         }
         Node::Atomic(inner) => count_back_references(inner, counts),
         Node::Capture(capture) => count_back_references(&capture.node, counts),
+        Node::Conditional(cond) => {
+            for &group in &cond.groups {
+                counts[group] += 1;
+            }
+            count_back_references(&cond.yes, counts);
+            count_back_references(&cond.no, counts);
+        }
         Node::Look(look) => count_back_references(&look.node, counts),
         Node::Repeat(repeat) => count_back_references(&repeat.node, counts),
         Node::Any
@@ -526,6 +557,7 @@ fn owned_captures(node: &Node, owned: &mut Vec<usize>) {
         | Node::Call(_)
         | Node::Char(_)
         | Node::Class(_)
+        | Node::Conditional(_)
         | Node::Empty
         | Node::Keep
         | Node::Look(_) => {}
@@ -541,6 +573,9 @@ fn find_capture(node: &Node, index: usize) -> Option<&Capture> {
             parts.iter().find_map(|part| find_capture(part, index))
         }
         Node::Atomic(inner) => find_capture(inner, index),
+        Node::Conditional(cond) => {
+            find_capture(&cond.yes, index).or_else(|| find_capture(&cond.no, index))
+        }
         Node::Look(look) => find_capture(&look.node, index),
         Node::Repeat(repeat) => find_capture(&repeat.node, index),
         Node::Any
@@ -569,6 +604,7 @@ fn char_matcher(node: &Node) -> Option<CharMatcher> {
         | Node::Call(_)
         | Node::Capture(_)
         | Node::Concat(_)
+        | Node::Conditional(_)
         | Node::Empty
         | Node::Keep
         | Node::Look(_)
@@ -595,6 +631,7 @@ fn char_set(node: &Node) -> Option<ClassUnicode> {
         | Node::Call(_)
         | Node::Capture(_)
         | Node::Concat(_)
+        | Node::Conditional(_)
         | Node::Empty
         | Node::Keep
         | Node::Look(_)
@@ -646,6 +683,7 @@ fn anchor_or_width(part: &Node) -> Option<Anchor> {
         | Node::Char(_)
         | Node::Class(_)
         | Node::Concat(_)
+        | Node::Conditional(_)
         | Node::Repeat(_) => Some(anchor(part)),
     }
 }
@@ -678,6 +716,7 @@ fn anchor(node: &Node) -> Anchor {
         | Node::Call(_)
         | Node::Char(_)
         | Node::Class(_)
+        | Node::Conditional(_)
         | Node::Empty
         | Node::Keep
         | Node::Look(_)

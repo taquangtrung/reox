@@ -186,6 +186,9 @@ fn edge(node: &Node, side: Edge) -> Start {
         Node::Assert(_) | Node::Empty | Node::Keep => Start::MaybeEmpty(ClassUnicode::empty()),
         Node::Atomic(inner) => edge(inner, side),
         Node::Capture(capture) => edge(&capture.node, side),
+        Node::Conditional(cond) => {
+            Start::alt([edge(&cond.yes, side), edge(&cond.no, side)].into_iter())
+        }
         Node::Char(c) => Start::Definite(ClassUnicode::new([ClassUnicodeRange::new(*c, *c)])),
         Node::Class(class) => Start::Definite(class.clone()),
         Node::Concat(parts) => match side {

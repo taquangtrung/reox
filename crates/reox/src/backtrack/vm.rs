@@ -262,6 +262,14 @@ impl Machine<'_> {
                     pc = *to;
                     continue;
                 }
+                Inst::CondJump(cond) => {
+                    let matched = cond
+                        .groups
+                        .iter()
+                        .any(|&group| self.slots.get(group * 2).is_some_and(Option::is_some));
+                    pc = if matched { cond.yes } else { cond.no };
+                    continue;
+                }
                 Inst::Split(split) if top && self.revisits(split.id, pos) => false,
                 Inst::Split(split) => {
                     self.cache.frames.push(Frame::Branch(Branch {

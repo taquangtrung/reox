@@ -362,7 +362,12 @@ fn is_regular(node: &Node) -> bool {
         Node::Repeat(repeat) => {
             (repeat.max.is_some() || repeat.node.min_len() > 0) && is_regular(&repeat.node)
         }
-        Node::Atomic(_) | Node::BackRef(_) | Node::Call(_) | Node::Keep | Node::Look(_) => false,
+        Node::Atomic(_)
+        | Node::BackRef(_)
+        | Node::Call(_)
+        | Node::Conditional(_)
+        | Node::Keep
+        | Node::Look(_) => false,
     }
 }
 
@@ -374,6 +379,7 @@ fn holds_line_start(node: &Node) -> bool {
         Node::Capture(capture) => holds_line_start(&capture.node),
         Node::Repeat(repeat) => holds_line_start(&repeat.node),
         Node::Atomic(inner) => holds_line_start(inner),
+        Node::Conditional(cond) => holds_line_start(&cond.yes) || holds_line_start(&cond.no),
         Node::Look(look) => holds_line_start(&look.node),
         Node::Any
         | Node::AnyButNewline
@@ -449,6 +455,7 @@ fn exact(node: &Node) -> Hir {
         | Node::Atomic(_)
         | Node::BackRef(_)
         | Node::Call(_)
+        | Node::Conditional(_)
         | Node::Keep
         | Node::Look(_) => char_part(node),
     }
@@ -462,6 +469,7 @@ fn loosen(node: &Node) -> Hir {
         Node::Alt(parts) => Hir::alternation(parts.iter().map(loosen).collect()),
         Node::Concat(parts) => Hir::concat(parts.iter().map(loosen).collect()),
         Node::Capture(capture) => loosen(&capture.node),
+        Node::Conditional(cond) => Hir::alternation(vec![loosen(&cond.yes), loosen(&cond.no)]),
         Node::Atomic(inner) => loosen(inner),
         Node::Repeat(repeat) => Hir::repetition(hir::Repetition {
             greedy: repeat.greedy,
@@ -498,6 +506,7 @@ fn char_part(node: &Node) -> Hir {
         | Node::Call(_)
         | Node::Capture(_)
         | Node::Concat(_)
+        | Node::Conditional(_)
         | Node::Empty
         | Node::Keep
         | Node::Look(_)

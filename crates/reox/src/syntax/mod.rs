@@ -16,7 +16,7 @@ use self::calls::check_calls;
 use self::class::{Escaped, fold, unicode_class};
 use self::fold::{class_folds, fold_literals};
 
-pub(crate) use self::ast::{Assertion, BackRef, Capture, Look, Node, Repeat};
+pub(crate) use self::ast::{Assertion, BackRef, Capture, Conditional, Look, Node, Repeat};
 pub(crate) use self::calls::Calls;
 pub(crate) use self::class::Posix;
 
@@ -375,8 +375,8 @@ impl Parser {
                 let name = self.parse_name('\'')?;
                 self.parse_capture(Some(name))
             }
-            Some('~') => Err(unsupported("absent operator", self.offset(open))),
-            Some('(') => Err(unsupported("conditional group", self.offset(open))),
+            Some('~') => self.parse_absent(open),
+            Some('(') => self.parse_conditional(open),
             _ => {
                 self.pos = open;
                 let Some((flags, end)) = self.scoped_flags() else {
@@ -431,6 +431,160 @@ impl Parser {
             negated,
             node: Box::new(node),
         }))
+    }
+
+    /// An absent operator (`(?~absent)`), matching zero or more characters
+    /// where `absent` does not match at any position.
+    fn parse_absent(&mut self, open: usize) -> Result<Node, Error> {
+        if self.peek() == Some('|') {
+            return Err(unsupported("absent operator", self.offset(open)));
+        }
+        let absent = self.parse_body()?;
+        let step = Node::Concat(vec![
+            Node::Look(Look {
+                behind: false,
+                negated: true,
+                node: Box::new(absent),
+            }),
+            Node::Any,
+        ]);
+        Ok(Node::Repeat(Repeat {
+            greedy: true,
+            max: None,
+            min: 0,
+            node: Box::new(step),
+        }))
+    }
+
+    /// A conditional group (`(?(condition)yes|no)` or `(?(condition)yes)`).
+    fn parse_conditional(&mut self, open: usize) -> Result<Node, Error> {
+        let start = self.pos;
+        let groups: Box<[usize]> = match self.peek() {
+            Some('<') => {
+                self.pos += 1;
+                self.parse_conditional_named('>', open, start)?
+            }
+            Some('\'') => {
+                self.pos += 1;
+                self.parse_conditional_named('\'', open, start)?
+            }
+            Some(c) if c.is_ascii_digit() => {
+                let n = self.parse_group_number(start)?;
+                if matches!(self.peek(), Some('+' | '-')) {
+                    let sign = self.next();
+                    let level = self.parse_group_number_allow_zero(start)?;
+                    if level != 0 || sign.is_none() {
+                        return Err(unsupported("conditional group", self.offset(open)));
+                    }
+                }
+                Box::new([n])
+            }
+            _ => return Err(unsupported("conditional group", self.offset(open))),
+        };
+        if !self.eat(')') {
+            return Err(syntax("invalid conditional pattern", self.offset(open)));
+        }
+        let saved = self.flags;
+        let yes = self.parse_concat()?;
+        self.flags = saved;
+        let no = match self.eat('|') {
+            true => self.parse_alt()?,
+            false => Node::Alt(Vec::new()),
+        };
+        self.flags = saved;
+        if !self.eat(')') {
+            return Err(syntax(
+                "end pattern with unmatched parenthesis",
+                self.offset(start),
+            ));
+        }
+        Ok(Node::Conditional(Conditional {
+            groups,
+            no: Box::new(no),
+            yes: Box::new(yes),
+        }))
+    }
+
+    /// A group name or number inside `<...>` or `'...'` of a conditional.
+    fn parse_conditional_named(
+        &mut self,
+        close: char,
+        open: usize,
+        start: usize,
+    ) -> Result<Box<[usize]>, Error> {
+        let mut text = String::new();
+        loop {
+            match self.next() {
+                Some(c) if c == close => break,
+                Some(c) if c.is_alphanumeric() || c == '_' || c == '-' => text.push(c),
+                Some(_) | None => return Err(syntax("invalid group name", self.offset(start))),
+            }
+        }
+        if text.is_empty() {
+            return Err(syntax("invalid group name", self.offset(start)));
+        }
+        if text.chars().all(|c| c.is_ascii_digit()) {
+            let n: usize = text
+                .parse()
+                .map_err(|_| syntax("too big number for reference", self.offset(start)))?;
+            if n == 0 {
+                return Err(syntax("invalid conditional pattern", self.offset(open)));
+            }
+            if self.highest_reference.is_none_or(|(known, _)| n > known) {
+                self.highest_reference = Some((n, start));
+            }
+            return Ok(Box::new([n]));
+        }
+        if text.starts_with(|c: char| c.is_ascii_digit()) {
+            return Err(syntax("invalid group name", self.offset(start)));
+        }
+        self.named_groups(&text, start)
+    }
+
+    /// A positive group number at the parser, recording it for bounds checks.
+    fn parse_group_number(&mut self, start: usize) -> Result<usize, Error> {
+        let n = self.parse_group_number_allow_zero(start)?;
+        if n == 0 {
+            return Err(syntax("invalid conditional pattern", self.offset(start)));
+        }
+        if self.highest_reference.is_none_or(|(known, _)| n > known) {
+            self.highest_reference = Some((n, start));
+        }
+        Ok(n)
+    }
+
+    /// A non-negative decimal integer at the parser.
+    fn parse_group_number_allow_zero(&mut self, start: usize) -> Result<usize, Error> {
+        let mut n = 0usize;
+        let mut any = false;
+        while let Some(d) = self.peek().filter(char::is_ascii_digit) {
+            self.pos += 1;
+            any = true;
+            n = n
+                .checked_mul(10)
+                .and_then(|v| v.checked_add((d as u8 - b'0') as usize))
+                .ok_or_else(|| syntax("too big number for reference", self.offset(start)))?;
+        }
+        if !any {
+            return Err(syntax("invalid conditional pattern", self.offset(start)));
+        }
+        Ok(n)
+    }
+
+    /// All group numbers named `name`, most recently opened first.
+    fn named_groups(&self, name: &str, start: usize) -> Result<Box<[usize]>, Error> {
+        let groups: Vec<usize> = self
+            .names
+            .iter()
+            .rev()
+            .filter(|(known, _)| known == name)
+            .map(|(_, group)| *group)
+            .collect();
+        if groups.is_empty() {
+            let message = format!("undefined name <{name}> reference");
+            return Err(syntax(message, self.offset(start)));
+        }
+        Ok(groups.into())
     }
 
     /// A group's body up to and past its `)`, its flags kept to it.
@@ -953,6 +1107,15 @@ fn renumber(node: &mut Node, base: usize) {
             }
         }
         Node::Atomic(inner) => renumber(inner, base),
+        Node::Conditional(cond) => {
+            for group in &mut cond.groups {
+                if *group != 0 {
+                    *group += base;
+                }
+            }
+            renumber(&mut cond.yes, base);
+            renumber(&mut cond.no, base);
+        }
         Node::Look(look) => renumber(&mut look.node, base),
         Node::Repeat(repeat) => renumber(&mut repeat.node, base),
         Node::Any

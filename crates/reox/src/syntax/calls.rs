@@ -123,6 +123,10 @@ fn collect<'a>(node: &'a Node, called: &mut [bool], bodies: &mut [&'a Node]) {
             }
         }
         Node::Atomic(inner) => collect(inner, called, bodies),
+        Node::Conditional(cond) => {
+            collect(&cond.yes, called, bodies);
+            collect(&cond.no, called, bodies);
+        }
         Node::Look(look) => collect(&look.node, called, bodies),
         Node::Repeat(repeat) => collect(&repeat.node, called, bodies),
         Node::Any
@@ -154,6 +158,10 @@ fn reach(node: &Node, bodies: &[&Node], reached: &mut [bool]) {
             }
         }
         Node::Atomic(inner) => reach(inner, bodies, reached),
+        Node::Conditional(cond) => {
+            reach(&cond.yes, bodies, reached);
+            reach(&cond.no, bodies, reached);
+        }
         Node::Look(look) => reach(&look.node, bodies, reached),
         Node::Repeat(repeat) if repeat.max == Some(0) => {}
         Node::Repeat(repeat) => reach(&repeat.node, bodies, reached),
@@ -193,6 +201,7 @@ fn can_end(node: &Node, ends: &[bool]) -> bool {
         Node::Concat(parts) => parts.iter().all(|part| can_end(part, ends)),
         Node::Atomic(inner) => can_end(inner, ends),
         Node::Capture(capture) => can_end(&capture.node, ends),
+        Node::Conditional(cond) => can_end(&cond.yes, ends) || can_end(&cond.no, ends),
         Node::Look(look) => can_end(&look.node, ends),
         Node::Repeat(repeat) => repeat.min == 0 || can_end(&repeat.node, ends),
         Node::Any
@@ -226,6 +235,10 @@ fn leading_calls(node: &Node, min_lens: &[usize], targets: &mut Vec<usize>) {
         }
         Node::Atomic(inner) => leading_calls(inner, min_lens, targets),
         Node::Capture(capture) => leading_calls(&capture.node, min_lens, targets),
+        Node::Conditional(cond) => {
+            leading_calls(&cond.yes, min_lens, targets);
+            leading_calls(&cond.no, min_lens, targets);
+        }
         Node::Look(look) => leading_calls(&look.node, min_lens, targets),
         // A part repeated no times is never run (`(?<a>...){0}`).
         Node::Repeat(repeat) if repeat.max == Some(0) => {}
